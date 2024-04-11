@@ -44,6 +44,7 @@ features are absent, they will be replaced by a vector of zeros.
 ```{bash}
 python utils/preprocess_data.py --data wikipedia --bipartite
 python utils/preprocess_data.py --data reddit --bipartite
+python utils/preprocess_data.py --data gcn --bipartite
 ```
 
 
@@ -57,6 +58,9 @@ python train_self_supervised.py --use_memory --prefix tgn-attn --n_runs 10
 
 # TGN-attn-reddit: Supervised learning on the reddit dataset
 python train_self_supervised.py -d reddit --use_memory --prefix tgn-attn-reddit --n_runs 10
+
+# TGN-attn-rumor: Supervised learning on the reddit dataset
+python train_self_supervised.py -d gcn --use_memory --prefix tgn-attn-gcn --n_runs 1
 ```
 
 Supervised learning on dynamic node classification (this requires a trained model from 

@@ -3,7 +3,60 @@ import math
 import numpy as np
 import torch
 from sklearn.metrics import average_precision_score, roc_auc_score
+import csv
 
+def eval_edge_prediction_by_timestamps_and_write_to_file(model, negative_edge_sampler, data, n_neighbors, batch_size=200, output_file="results/evaluation_t.csv"):
+    assert negative_edge_sampler.seed is not None
+    negative_edge_sampler.reset_random_state()
+    
+    val_ap, val_auc = [], []
+
+    with torch.no_grad():
+        model = model.eval()
+        num_test_instance = len(data.sources)
+        unique_timestamps = sorted(set(data.timestamps))
+
+        for timestamp in unique_timestamps:
+            sources_batch = []
+            destinations_batch = []
+            timestamps_batch = []
+            edge_idxs_batch = []
+
+            for i in range(num_test_instance):
+                if data.timestamps[i] == timestamp:
+                    sources_batch.append(data.sources[i])
+                    destinations_batch.append(data.destinations[i])
+                    timestamps_batch.append(data.timestamps[i])
+                    edge_idxs_batch.append(data.edge_idxs[i])
+
+            size = len(sources_batch)
+            if size == 0:
+                continue
+
+            _, negative_samples = negative_edge_sampler.sample(size)
+
+            pos_prob, neg_prob = model.compute_edge_probabilities(np.array(sources_batch), 
+                                                                  np.array(destinations_batch),
+                                                                  negative_samples, 
+                                                                  np.array(timestamps_batch),
+                                                                  np.array(edge_idxs_batch), 
+                                                                  n_neighbors)
+
+            pred_score = np.concatenate([(pos_prob).cpu().numpy(), (neg_prob).cpu().numpy()])
+            true_label = np.concatenate([np.ones(size), np.zeros(size)])
+
+            val_ap.append(average_precision_score(true_label, pred_score))  # Area Under Precision-Recall Curve
+            val_auc.append(roc_auc_score(true_label, pred_score)) # AUC area
+
+            # print("==time=="+str(timestamp))
+
+    with open(output_file, mode='w', newline='') as file:
+        writer = csv.writer(file)
+        writer.writerow(['Timestamp', 'Val_AP', 'Val_AUC'])
+        for i in range(len(unique_timestamps)):
+            writer.writerow([unique_timestamps[i], val_ap[i], val_auc[i]])
+
+    return np.mean(val_ap), np.mean(val_auc)
 
 def eval_edge_prediction(model, negative_edge_sampler, data, n_neighbors, batch_size=200):
   # Ensures the random sampler uses a seed for evaluation (i.e. we sample always the same
