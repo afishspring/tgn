@@ -6,7 +6,7 @@ from sklearn.metrics import average_precision_score, roc_auc_score
 import csv
 
 
-def eval_edge_prediction_by_timestamps_and_write_to_file(model, negative_edge_sampler, data, n_neighbors, batch_size=200, output_file="results/evaluation_t.csv"):
+def eval_edge_prediction_by_timestamps(model, negative_edge_sampler, data, n_neighbors, batch_size=200, output_file="results/evaluation_t.csv"):
     assert negative_edge_sampler.seed is not None
     negative_edge_sampler.reset_random_state()
 
@@ -49,9 +49,10 @@ def eval_edge_prediction_by_timestamps_and_write_to_file(model, negative_edge_sa
 
             # Area Under Precision-Recall Curve
             val_ap.append(average_precision_score(true_label, pred_score))
-            val_auc.append(roc_auc_score(true_label, pred_score))  # AUC area
+            # AUC area
+            val_auc.append(roc_auc_score(true_label, pred_score))
 
-            # print("==time=="+str(timestamp))
+            print("==time=="+str(timestamp))
 
     with open(output_file, mode='w', newline='') as file:
         writer = csv.writer(file)
@@ -61,6 +62,54 @@ def eval_edge_prediction_by_timestamps_and_write_to_file(model, negative_edge_sa
 
     return np.mean(val_ap), np.mean(val_auc)
 
+def eval_edge_prediction_by_rank(model, negative_edge_sampler, data, n_neighbors, batch_size=200, top_k=10):
+    assert negative_edge_sampler.seed is not None
+    negative_edge_sampler.reset_random_state()
+
+    with torch.no_grad():
+        model = model.eval()
+
+        TEST_BATCH_SIZE = batch_size
+        num_test_instance = len(data.sources)
+        num_test_batch = math.ceil(num_test_instance / TEST_BATCH_SIZE)
+
+        ranks_pred = []
+        
+        for k in range(num_test_batch):
+            s_idx = k * TEST_BATCH_SIZE
+            e_idx = min(num_test_instance, s_idx + TEST_BATCH_SIZE)
+
+            sources_batch = data.sources[s_idx:e_idx]
+            destinations_batch = data.destinations[s_idx:e_idx]
+            timestamps_batch = data.timestamps[s_idx:e_idx]
+            edge_idxs_batch = data.edge_idxs[s_idx: e_idx]
+
+            size = len(sources_batch)
+            _, negative_samples = negative_edge_sampler.sample(size)
+
+            ranks = np.zeros(size, dtype=bool)
+
+            for index in range(size):
+                timestamps_batch.fill(timestamps_batch[index])
+
+                pos_prob, neg_prob = model.compute_edge_probabilities(sources_batch, destinations_batch,
+                                                                    negative_samples, timestamps_batch,
+                                                                    edge_idxs_batch, n_neighbors)
+                # 获取从大到小排序的索引
+                sorted_indices = np.argsort(-pos_prob.squeeze().cpu().numpy(), kind='stable')  # 注意负号，因为argsort默认是升序
+                # 找到第index个pos_prob在排序后的数组中的位置
+                rank = np.where(sorted_indices == index)[0][0] + 1
+                ranks[index] = rank <= top_k
+            
+            ranks_pred.append(ranks)
+
+        ranks_pred = np.concatenate(ranks_pred)
+        ranks_label = np.ones_like(ranks_pred, dtype=bool)
+
+        val_ap = average_precision_score(ranks_pred, ranks_label)
+        val_auc = roc_auc_score(ranks_pred, ranks_label)
+
+        return val_ap, val_auc
 
 def eval_edge_prediction(model, negative_edge_sampler, data, n_neighbors, batch_size=200):
     # Ensures the random sampler uses a seed for evaluation (i.e. we sample always the same
@@ -102,7 +151,6 @@ def eval_edge_prediction(model, negative_edge_sampler, data, n_neighbors, batch_
             val_auc.append(roc_auc_score(true_label, pred_score))
 
     return np.mean(val_ap), np.mean(val_auc)
-
 
 def eval_node_classification(tgn, decoder, data, edge_idxs, batch_size, n_neighbors):
     pred_prob = np.zeros(len(data.sources))

@@ -8,7 +8,7 @@ import numpy as np
 import pickle
 from pathlib import Path
 
-from evaluation.evaluation import eval_edge_prediction, eval_edge_prediction_by_timestamps_and_write_to_file
+from evaluation.evaluation import eval_edge_prediction, eval_edge_prediction_by_timestamps, eval_edge_prediction_by_rank
 from model.tgn import TGN
 from utils.utils import EarlyStopMonitor, RandEdgeSampler, get_neighbor_finder
 from utils.data_processing import get_data, compute_time_statistics
@@ -123,6 +123,28 @@ logger.info(args)
 node_features, edge_features, full_data, train_data, val_data, test_data, new_node_val_data, \
     new_node_test_data = get_data(DATA,
                                   different_new_nodes_between_val_and_test=args.different_new_nodes, randomize_features=args.randomize_features)
+
+# import matplotlib.pyplot as plt
+
+# # 假设 full_data.timestamps 是一个包含时间戳的NumPy数组
+# timestamps = full_data.timestamps
+
+# # 绘制直方图
+# plt.hist(timestamps, bins=50, alpha=0.75)  # bins参数控制直方图的柱子数量，alpha参数控制柱子的透明度
+# plt.xlabel('Timestamp')
+# plt.ylabel('Frequency')
+# plt.title('Histogram of Timestamps')
+# plt.grid(True)
+# plt.show()
+
+# import seaborn as sns
+
+# # 使用Seaborn绘制带有KDE的直方图
+# sns.histplot(timestamps, kde=True)
+# plt.xlabel('Timestamp')
+# plt.ylabel('Density')
+# plt.title('Histogram of Timestamps with KDE')
+# plt.show()
 
 # Initialize training neighbor finder to retrieve temporal graph
 train_ngh_finder = get_neighbor_finder(train_data, args.uniform)
@@ -278,7 +300,7 @@ for i in range(args.n_runs):
             tgn.memory.restore_memory(train_memory_backup)
 
         # Validate on unseen nodes
-        nn_val_ap, nn_val_auc = eval_edge_prediction(model=tgn,
+        nn_val_ap, nn_val_auc = eval_edge_prediction_by_rank(model=tgn,
                                                      negative_edge_sampler=val_rand_sampler,
                                                      data=new_node_val_data,
                                                      n_neighbors=NUM_NEIGHBORS)
@@ -333,21 +355,19 @@ for i in range(args.n_runs):
 
     # Test
     tgn.embedding_module.neighbor_finder = full_ngh_finder
-    test_ap, test_auc = eval_edge_prediction_by_timestamps_and_write_to_file(model=tgn,
+    test_ap, test_auc = eval_edge_prediction_by_rank(model=tgn,
                                                                              negative_edge_sampler=test_rand_sampler,
                                                                              data=test_data,
-                                                                             n_neighbors=NUM_NEIGHBORS,
-                                                                             output_file='results/test_evaluation_t.csv')
+                                                                             n_neighbors=NUM_NEIGHBORS)
 
     if USE_MEMORY:
         tgn.memory.restore_memory(val_memory_backup)
 
     # Test on unseen nodes
-    nn_test_ap, nn_test_auc = eval_edge_prediction_by_timestamps_and_write_to_file(model=tgn,
+    nn_test_ap, nn_test_auc = eval_edge_prediction_by_rank(model=tgn,
                                                                                    negative_edge_sampler=nn_test_rand_sampler,
                                                                                    data=new_node_test_data,
-                                                                                   n_neighbors=NUM_NEIGHBORS,
-                                                                                   output_file='results/nn_test_evaluation_t.csv')
+                                                                                   n_neighbors=NUM_NEIGHBORS)
 
     logger.info(
         'Test statistics: Old nodes -- auc: {}, ap: {}'.format(test_auc, test_ap))

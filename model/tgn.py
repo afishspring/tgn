@@ -97,8 +97,7 @@ class TGN(torch.nn.Module):
 
         # MLP to compute probability on an edge given two node embeddings
         self.affinity_score = MergeLayer(self.n_node_features, self.n_node_features,
-                                         self.n_node_features,
-                                         1)
+                                         self.n_node_features, 1)
 
     def compute_temporal_embeddings(self, source_nodes, destination_nodes, negative_nodes, edge_times,
                                     edge_idxs, n_neighbors=20):
@@ -225,8 +224,8 @@ class TGN(torch.nn.Module):
             source_nodes, destination_nodes, negative_nodes, edge_times, edge_idxs, n_neighbors)
 
         score = self.affinity_score(torch.cat([source_node_embedding, source_node_embedding], dim=0),
-                                    torch.cat([destination_node_embedding,
-                                               negative_node_embedding])).squeeze(dim=0)
+                                    torch.cat([destination_node_embedding, negative_node_embedding])
+                                ).squeeze(dim=0)
         pos_score = score[:n_samples]
         neg_score = score[n_samples:]
 
