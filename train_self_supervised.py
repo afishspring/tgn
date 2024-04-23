@@ -19,7 +19,7 @@ np.random.seed(0)
 # Argument and global variables
 parser = argparse.ArgumentParser('TGN self-supervised training')
 parser.add_argument('-d', '--data', type=str, help='Dataset name (eg. wikipedia or reddit)',
-                    default='wikipedia')
+                    default='rumor')
 parser.add_argument('--bs', type=int, default=200, help='Batch_size')
 parser.add_argument('--prefix', type=str, default='',
                     help='Prefix to name the checkpoints')
@@ -128,14 +128,6 @@ node_features, edge_features, full_data, train_data, val_data, test_data, new_no
 
 # # 假设 full_data.timestamps 是一个包含时间戳的NumPy数组
 # timestamps = full_data.timestamps
-
-# # 绘制直方图
-# plt.hist(timestamps, bins=50, alpha=0.75)  # bins参数控制直方图的柱子数量，alpha参数控制柱子的透明度
-# plt.xlabel('Timestamp')
-# plt.ylabel('Frequency')
-# plt.title('Histogram of Timestamps')
-# plt.grid(True)
-# plt.show()
 
 # import seaborn as sns
 
@@ -300,7 +292,7 @@ for i in range(args.n_runs):
             tgn.memory.restore_memory(train_memory_backup)
 
         # Validate on unseen nodes
-        nn_val_ap, nn_val_auc = eval_edge_prediction_by_rank(model=tgn,
+        nn_val_ap, nn_val_auc = eval_edge_prediction(model=tgn,
                                                      negative_edge_sampler=val_rand_sampler,
                                                      data=new_node_val_data,
                                                      n_neighbors=NUM_NEIGHBORS)
@@ -355,19 +347,19 @@ for i in range(args.n_runs):
 
     # Test
     tgn.embedding_module.neighbor_finder = full_ngh_finder
-    test_ap, test_auc = eval_edge_prediction_by_rank(model=tgn,
-                                                                             negative_edge_sampler=test_rand_sampler,
-                                                                             data=test_data,
-                                                                             n_neighbors=NUM_NEIGHBORS)
+    test_ap, test_auc = eval_edge_prediction(model=tgn,
+                                                negative_edge_sampler=test_rand_sampler,
+                                                data=test_data,
+                                                n_neighbors=NUM_NEIGHBORS)
 
     if USE_MEMORY:
         tgn.memory.restore_memory(val_memory_backup)
 
     # Test on unseen nodes
-    nn_test_ap, nn_test_auc = eval_edge_prediction_by_rank(model=tgn,
-                                                                                   negative_edge_sampler=nn_test_rand_sampler,
-                                                                                   data=new_node_test_data,
-                                                                                   n_neighbors=NUM_NEIGHBORS)
+    nn_test_ap, nn_test_auc = eval_edge_prediction(model=tgn,
+                                                    negative_edge_sampler=nn_test_rand_sampler,
+                                                    data=new_node_test_data,
+                                                    n_neighbors=NUM_NEIGHBORS)
 
     logger.info(
         'Test statistics: Old nodes -- auc: {}, ap: {}'.format(test_auc, test_ap))

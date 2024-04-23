@@ -37,10 +37,13 @@ def eval_edge_prediction_by_timestamps(model, negative_edge_sampler, data, n_nei
             _, negative_samples = negative_edge_sampler.sample(size)
 
             pos_prob, neg_prob = model.compute_edge_probabilities(np.array(sources_batch),
-                                                                  np.array(destinations_batch),
+                                                                  np.array(
+                                                                      destinations_batch),
                                                                   negative_samples,
-                                                                  np.array(timestamps_batch),
-                                                                  np.array(edge_idxs_batch),
+                                                                  np.array(
+                                                                      timestamps_batch),
+                                                                  np.array(
+                                                                      edge_idxs_batch),
                                                                   n_neighbors)
 
             pred_score = np.concatenate(
@@ -62,6 +65,7 @@ def eval_edge_prediction_by_timestamps(model, negative_edge_sampler, data, n_nei
 
     return np.mean(val_ap), np.mean(val_auc)
 
+
 def eval_edge_prediction_by_rank(model, negative_edge_sampler, data, n_neighbors, batch_size=200, top_k=10):
     assert negative_edge_sampler.seed is not None
     negative_edge_sampler.reset_random_state()
@@ -69,47 +73,43 @@ def eval_edge_prediction_by_rank(model, negative_edge_sampler, data, n_neighbors
     with torch.no_grad():
         model = model.eval()
 
-        TEST_BATCH_SIZE = batch_size
-        num_test_instance = len(data.sources)
-        num_test_batch = math.ceil(num_test_instance / TEST_BATCH_SIZE)
+        sources_batch = data.sources
+        destinations_batch = data.destinations
+        timestamps_batch = data.timestamps
+        edge_idxs_batch = data.edge_idxs
 
-        ranks_pred = []
-        
-        for k in range(num_test_batch):
-            s_idx = k * TEST_BATCH_SIZE
-            e_idx = min(num_test_instance, s_idx + TEST_BATCH_SIZE)
+        size = len(sources_batch)
+        _, negative_samples = negative_edge_sampler.sample(size)
 
-            sources_batch = data.sources[s_idx:e_idx]
-            destinations_batch = data.destinations[s_idx:e_idx]
-            timestamps_batch = data.timestamps[s_idx:e_idx]
-            edge_idxs_batch = data.edge_idxs[s_idx: e_idx]
+        time_next = min(timestamps_batch)
 
-            size = len(sources_batch)
-            _, negative_samples = negative_edge_sampler.sample(size)
+        timestamps_batch.fill(time_next)
 
-            ranks = np.zeros(size, dtype=bool)
+        pos_prob, neg_prob = model.compute_edge_probabilities(sources_batch, destinations_batch,
+                                                              negative_samples, timestamps_batch,
+                                                              edge_idxs_batch, n_neighbors)
+        # 获取从大到小排序的索引
+        sorted_indices = np.argsort(
+            -pos_prob.squeeze().cpu().numpy(), kind='stable')
+        # 注意负号，因为argsort默认是升序
 
-            for index in range(size):
-                timestamps_batch.fill(timestamps_batch[index])
+        ranks = []
 
-                pos_prob, neg_prob = model.compute_edge_probabilities(sources_batch, destinations_batch,
-                                                                    negative_samples, timestamps_batch,
-                                                                    edge_idxs_batch, n_neighbors)
-                # 获取从大到小排序的索引
-                sorted_indices = np.argsort(-pos_prob.squeeze().cpu().numpy(), kind='stable')  # 注意负号，因为argsort默认是升序
-                # 找到第index个pos_prob在排序后的数组中的位置
-                rank = np.where(sorted_indices == index)[0][0] + 1
-                ranks[index] = rank <= top_k
-            
-            ranks_pred.append(ranks)
+        count = np.count_nonzero(timestamps_batch == time_next)
 
-        ranks_pred = np.concatenate(ranks_pred)
+        for index, t in enumerate(timestamps_batch):
+            # 找到第index个pos_prob在排序后的数组中的位置
+            rank = np.where(sorted_indices == index)[0][0] + 1
+            ranks.append(rank < count and t == time_next)
+
+        ranks_pred = np.array(ranks)
         ranks_label = np.ones_like(ranks_pred, dtype=bool)
 
         val_ap = average_precision_score(ranks_pred, ranks_label)
         val_auc = roc_auc_score(ranks_pred, ranks_label)
 
         return val_ap, val_auc
+
 
 def eval_edge_prediction(model, negative_edge_sampler, data, n_neighbors, batch_size=200):
     # Ensures the random sampler uses a seed for evaluation (i.e. we sample always the same
@@ -151,6 +151,7 @@ def eval_edge_prediction(model, negative_edge_sampler, data, n_neighbors, batch_
             val_auc.append(roc_auc_score(true_label, pred_score))
 
     return np.mean(val_ap), np.mean(val_auc)
+
 
 def eval_node_classification(tgn, decoder, data, edge_idxs, batch_size, n_neighbors):
     pred_prob = np.zeros(len(data.sources))
